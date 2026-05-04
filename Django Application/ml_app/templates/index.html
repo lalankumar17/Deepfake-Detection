@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="bg exe-bg">
+    <main class="exe-upload-panel" aria-labelledby="upload-title">
+        <h1 id="upload-title" class="exe-title">Deepfake Detection</h1>
+
+        {% if model_error %}
+        <div class="alert alert-danger mt-4">{{ model_error }}</div>
+        {% endif %}
+        {% if prediction_error %}
+        <div class="alert alert-danger mt-4">{{ prediction_error }}</div>
+        {% endif %}
+
+        <form class="exe-form" method="POST" enctype="multipart/form-data" name="video-upload" id="video-upload">
+            {% csrf_token %}
+            <input type="hidden" id="{{ form.sequence_length.id_for_label }}" name="{{ form.sequence_length.name }}" value="20">
+
+            <div class="exe-file-row">
+                <label class="exe-button exe-file-button" for="{{ form.upload_video_file.id_for_label }}">
+                    Select Video/Image
+                </label>
+                {{ form.upload_video_file }}
+                <span class="exe-file-name" id="selected-file-name">No file selected</span>
+            </div>
+            {% if form.upload_video_file.errors %}
+            {% for each_error in form.upload_video_file.errors %}
+            <div class="alert alert-danger mt-2">{{ each_error }}</div>
+            {% endfor %}
+            {% endif %}
+
+            <div class="exe-control-row">
+                <label class="exe-control-label" for="model-lane-select">Model Lane:</label>
+                <select id="model-lane-select" class="exe-select" aria-label="Model Lane">
+                    <option value="video" selected>Video Model</option>
+                    <option value="image">Image Model</option>
+                </select>
+                <button id="videoUpload" type="submit" name="submit" class="exe-button exe-start-button" disabled>
+                    Start Prediction
+                </button>
+            </div>
+
+            <label class="exe-toggle-row" for="{{ form.use_gemini_review.id_for_label }}">
+                {{ form.use_gemini_review }}
+                <span class="exe-toggle-ui" aria-hidden="true"></span>
+                <span class="exe-toggle-title">Gemini Review</span>
+                <span class="exe-toggle-note">Optional second check</span>
+            </label>
+
+            <div class="exe-status">
+                <div class="exe-status-text" id="upload-status">Ready</div>
+                <div class="exe-progress" aria-hidden="true">
+                    <span id="upload-progress-bar"></span>
+                </div>
+            </div>
+        </form>
+    </main>
+</div>
+{% endblock %}
+{% block js_cripts %}
+<script>
+(function () {
+    const fileInput = document.getElementById("{{ form.upload_video_file.id_for_label }}");
+    const fileName = document.getElementById("selected-file-name");
+    const laneSelect = document.getElementById("model-lane-select");
+    const submitButton = document.getElementById("videoUpload");
+    const form = document.getElementById("video-upload");
+    const statusText = document.getElementById("upload-status");
+    const progressBar = document.getElementById("upload-progress-bar");
+    const imageExtensions = new Set(["jpg", "jpeg", "png", "bmp", "tiff"]);
+
+    function extensionFor(name) {
+        const parts = (name || "").split(".");
+        return parts.length > 1 ? parts.pop().toLowerCase() : "";
+    }
+
+    function setLaneFromFile(name) {
+        laneSelect.value = imageExtensions.has(extensionFor(name)) ? "image" : "video";
+    }
+
+    fileInput.addEventListener("change", function () {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+            fileName.textContent = "No file selected";
+            submitButton.disabled = true;
+            statusText.textContent = "Ready";
+            progressBar.style.width = "0%";
+            return;
+        }
+
+        fileName.textContent = file.name;
+        setLaneFromFile(file.name);
+        submitButton.disabled = false;
+        statusText.textContent = "Ready";
+        progressBar.style.width = "1%";
+    });
+
+    form.addEventListener("submit", function () {
+        submitButton.disabled = true;
+        statusText.textContent = "Uploading and analyzing...";
+        progressBar.classList.add("exe-progress-fill");
+        progressBar.style.width = "6%";
+        window.requestAnimationFrame(function () {
+            progressBar.style.width = "100%";
+        });
+    });
+})();
+</script>
+{% endblock %}

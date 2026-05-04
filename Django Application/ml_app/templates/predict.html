@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+{% static '' as static_base %}
+<div class="bg result-bg">
+    <main class="result-page">
+        <section class="result-card">
+            <h1>Prediction Result</h1>
+
+            {% if no_faces %}
+            <div class="alert alert-warning mb-0">
+                No face was detected in the uploaded media. Please try a clearer image/video.
+            </div>
+            {% else %}
+            <div class="result-summary-box">
+                <p>
+                    <strong>Result:</strong>
+                    {% if output == "REAL" %}
+                    <span class="result-badge result-badge-real">REAL</span>
+                    {% elif output == "FAKE" %}
+                    <span class="result-badge result-badge-fake">FAKE</span>
+                    {% else %}
+                    <span class="result-badge result-badge-muted">NOT AVAILABLE</span>
+                    {% endif %}
+                </p>
+                <p><strong>Confidence:</strong> {{ confidence }}%</p>
+                {% if model_used %}
+                <p><strong>Model Used:</strong> {{ model_used }}</p>
+                {% endif %}
+                {% if decision_source %}
+                <p><strong>Decision:</strong> {{ decision_source }}</p>
+                {% endif %}
+            </div>
+
+            {% if result_preview_image %}
+            <div class="web-result-player" data-result-player data-static-base="{{ static_base }}" data-duration-seconds="{{ result_media_duration_seconds|default:0 }}" data-frame-interval-ms="{{ result_preview_interval_ms|default:120 }}">
+                {% if show_result_player %}
+                <div class="web-player-controls">
+                    <button type="button" class="web-player-button web-player-play" data-preview-action="play">&#9658; Play</button>
+                    <button type="button" class="web-player-button web-player-pause" data-preview-action="pause">&#10074;&#10074; Pause</button>
+                    <button type="button" class="web-player-button web-player-stop" data-preview-action="stop">&#9632; Stop</button>
+                </div>
+                <div class="web-seek-row">
+                    <span data-preview-current-time>0:00</span>
+                    <input class="web-seek-input" type="range" min="0" max="0" value="0" step="1" data-preview-seek>
+                    <span>{{ result_media_duration }}</span>
+                </div>
+                {% endif %}
+                <img class="web-result-frame" src="{% static '' %}{{ result_preview_image }}" alt="Face read preview" data-preview-frame>
+            </div>
+            {{ result_preview_frames|json_script:"result-preview-frames-data" }}
+            <script>
+            (function () {
+                const player = document.querySelector("[data-result-player]");
+                const data = document.getElementById("result-preview-frames-data");
+                if (!player || !data) {
+                    return;
+                }
+
+                const frames = JSON.parse(data.textContent || "[]");
+                if (!frames.length) {
+                    return;
+                }
+
+                const image = player.querySelector("[data-preview-frame]");
+                const seek = player.querySelector("[data-preview-seek]");
+                const currentTime = player.querySelector("[data-preview-current-time]");
+                const staticBase = player.dataset.staticBase || "/static/";
+                const durationSeconds = Number.parseFloat(player.dataset.durationSeconds || "0") || 0;
+                const frameIntervalMs = Math.max(60, Number.parseInt(player.dataset.frameIntervalMs || "120", 10) || 120);
+                let frameIndex = 0;
+                let timer = null;
+
+                function sourceFor(path) {
+                    if (/^(https?:|data:|\/)/.test(path)) {
+                        return path;
+                    }
+                    return staticBase + path;
+                }
+
+                function formatTime(seconds) {
+                    const rounded = Math.max(0, Math.round(seconds));
+                    const minutes = Math.floor(rounded / 60);
+                    const remaining = String(rounded % 60).padStart(2, "0");
+                    return `${minutes}:${remaining}`;
+                }
+
+                function render(index) {
+                    frameIndex = Math.max(0, Math.min(index, frames.length - 1));
+                    if (image) {
+                        image.src = sourceFor(frames[frameIndex]);
+                    }
+                    if (seek) {
+                        seek.max = String(Math.max(0, frames.length - 1));
+                        seek.value = String(frameIndex);
+                    }
+                    if (currentTime) {
+                        const ratio = frames.length > 1 ? frameIndex / (frames.length - 1) : 0;
+                        currentTime.textContent = formatTime(durationSeconds * ratio);
+                    }
+                }
+
+                function pause() {
+                    if (timer) {
+                        window.clearInterval(timer);
+                        timer = null;
+                    }
+                }
+
+                function play() {
+                    if (timer || frames.length <= 1) {
+                        return;
+                    }
+                    timer = window.setInterval(function () {
+                        render((frameIndex + 1) % frames.length);
+                    }, frameIntervalMs);
+                }
+
+                function stop() {
+                    pause();
+                    render(0);
+                }
+
+                player.querySelectorAll("[data-preview-action]").forEach(function (button) {
+                    button.addEventListener("click", function () {
+                        const action = button.dataset.previewAction;
+                        if (action === "play") {
+                            play();
+                        } else if (action === "pause") {
+                            pause();
+                        } else if (action === "stop") {
+                            stop();
+                        }
+                    });
+                });
+
+                if (seek) {
+                    seek.addEventListener("input", function () {
+                        pause();
+                        render(Number.parseInt(seek.value, 10) || 0);
+                    });
+                }
+
+                render(0);
+            }());
+            </script>
+            {% endif %}
+
+            {% if original_video %}
+            <div class="result-file-band">
+                <span>Uploaded File:</span> {{ original_video }}
+            </div>
+            {% endif %}
+
+            <section class="result-preview-section">
+                <h2>Preprocessed Frames</h2>
+                <div class="result-scroll-strip result-scroll-strip-tall">
+                    {% if preprocessed_images %}
+                    {% for img in preprocessed_images %}
+                    <img class="result-strip-image" src="{% static '' %}{{ img }}" alt="{{ img }}">
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="result-preview-section">
+                <h2>Cropped Faces</h2>
+                <div class="result-scroll-strip result-scroll-strip-faces">
+                    {% if faces_cropped_images %}
+                    {% for img in faces_cropped_images %}
+                    <img class="result-strip-face" src="{% static '' %}{{ img }}" alt="{{ img }}">
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </section>
+            {% endif %}
+        </section>
+    </main>
+</div>
+{% endblock %}
